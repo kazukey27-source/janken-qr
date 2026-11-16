@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>QRじゃんけんバトル - 二人で遊べるリアルタイムQR対戦</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- PeerJS CDN for WebRTC P2P Realtime Connection -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <!-- Fullscreen Particle Canvas -->
+  <canvas id="confetti-canvas"></canvas>
+
+  <!-- Floating Reactions Layer -->
+  <div id="reactions-layer"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-area">
+      <div class="logo-icon">✊✌️🖐️</div>
+      <div class="app-title">QRじゃんけんバトル</div>
+    </div>
+    <div class="header-controls">
+      <button class="btn-icon" id="btn-toggle-sound" title="サウンド切り替え">🔊</button>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main>
+
+    <!-- SCREEN 1: Menu Screen -->
+    <section id="screen-menu" class="screen active">
+      <div class="hero-box">
+        <h1 class="hero-title">二人でじゃんけんバトル！</h1>
+        <p class="hero-subtitle">QRコードを使って友達や家族と白熱のじゃんけん勝負！</p>
+      </div>
+
+      <div class="card-box">
+        <div class="mode-grid">
+          <!-- Mode 1: Online / P2P Match via QR -->
+          <button class="mode-btn highlight" id="btn-mode-host">
+            <div class="mode-icon">📡</div>
+            <div class="mode-info">
+              <h3>部屋をつくる (ホスト)</h3>
+              <p>QRコードを表示してスマホを招待！リアルタイム同期対戦</p>
+            </div>
+          </button>
+
+          <button class="mode-btn" id="btn-mode-guest">
+            <div class="mode-icon">📲</div>
+            <div class="mode-info">
+              <h3>QRコードをスキャンして参加</h3>
+              <p>ホストのQRコードをカメラで読み取って部屋に入ります</p>
+            </div>
+          </button>
+
+          <!-- Mode 2: Camera QR Card Duel -->
+          <button class="mode-btn" id="btn-mode-camera-duel">
+            <div class="mode-icon">📷</div>
+            <div class="mode-info">
+              <h3>カメラにかざして対戦 (1台で遊ぶ)</h3>
+              <p>2人がそれぞれ手札QRコードをカメラにかざして勝負！</p>
+            </div>
+          </button>
+
+          <!-- Mode 3: QR Cards Display -->
+          <button class="mode-btn" id="btn-mode-cards">
+            <div class="mode-icon">🎴</div>
+            <div class="mode-info">
+              <h3>じゃんけんQRカード一覧</h3>
+              <p>グー・チョキ・パーのQRコードを表示。別端末にかざしたり印刷できます</p>
+            </div>
+          </button>
+
+          <!-- Mode 4: Secret Offline QR Mode -->
+          <button class="mode-btn" id="btn-mode-secret">
+            <div class="mode-icon">🔒</div>
+            <div class="mode-info">
+              <h3>オフライン秘密QR対決</h3>
+              <p>通信不要！手を選んで作った秘密QRを相手がカメラでスキャン！</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Instructions -->
+      <div class="card-box" style="padding: 16px 20px;">
+        <h4 style="font-size: 14px; color: var(--accent); margin-bottom: 8px;">💡 二人で遊ぶおすすめの方法</h4>
+        <p style="font-size: 12px; color: var(--text-sub); line-height: 1.6;">
+          ① <strong>スマホ2台、またはPCとスマホで遊ぶ場合</strong>：<br>
+          1台目で<strong>「部屋をつくる」</strong>を押し、もう1台のカメラでQRコードを読み取るだけで即座に対戦開始！<br>
+          ② <strong>1台のPCやスマホの前で2人で遊ぶ場合</strong>：<br>
+          <strong>「カメラにかざして対戦」</strong>を選び、スマホ等に表示した「グー・チョキ・パー」のQRコードをカメラにかざし合って勝負！
+        </p>
+      </div>
+    </section>
+
+    <!-- SCREEN 2: Host Screen (Displays QR Code) -->
+    <section id="screen-host" class="screen">
+      <div class="card-box" style="text-align: center;">
+        <h2 style="font-size: 20px; color: #fff; margin-bottom: 6px;">対戦相手を待っています</h2>
+        <p style="font-size: 13px; color: var(--text-sub);">
+          相手のスマホのカメラで、下のQRコードを読み取ってください
+        </p>
+
+        <div class="host-qr-container">
+          <div class="qr-frame" id="host-qr-code">
+            <!-- QR code generated here -->
+          </div>
+          <div class="room-id-badge">
+            ROOM: <span id="host-room-id">...</span>
+          </div>
+        </div>
+
+        <div class="url-copy-box">
+          <input type="text" id="host-room-url" readonly value="" placeholder="接続URL生成中...">
+          <button class="btn-primary" id="btn-copy-url">URLコピー</button>
+        </div>
+        <p id="host-copy-status" style="font-size: 12px; color: var(--primary); margin-top: 6px; min-height: 18px;"></p>
+
+        <!-- Local File Notice -->
+        <div id="host-local-notice" style="display: none; background: rgba(254, 228, 64, 0.1); border: 1px solid rgba(254, 228, 64, 0.3); border-radius: 8px; padding: 10px; margin-top: 12px; font-size: 12px; color: var(--accent); text-align: left;">
+          ℹ️ <strong>ローカルファイル(file://)でお開きの場合:</strong><br>
+          別ウィンドウまたは別のPCでこのHTMLを開き、「参加」画面で上記のROOM IDを入力しても対戦できます。
+        </div>
+
+        <div class="waiting-pulse">
+          <div class="spinner"></div>
+          <span>相手の接続を待機中...</span>
+        </div>
+
+        <div id="host-error" style="color: var(--secondary); font-size: 12px; margin-top: 10px;"></div>
+
+        <div class="screen-footer">
+          <button class="btn-secondary btn-back-menu">← メニューへもどる</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 3: Guest Scanner Screen -->
+    <section id="screen-guest" class="screen">
+      <div class="card-box" style="text-align: center;">
+        <h2 style="font-size: 20px; color: #fff; margin-bottom: 6px;">QRコードをスキャン</h2>
+        <p style="font-size: 13px; color: var(--text-sub); margin-bottom: 16px;">
+          ホストの画面に表示されているQRコードを枠内に合わせてください
+        </p>
+
+        <div class="camera-view-container">
+          <video id="scanner-video" playsinline></video>
+          <canvas id="scanner-canvas"></canvas>
+          <div class="scanner-overlay">
+            <div class="scanner-reticle">
+              <div class="scanner-laser"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 16px;">
+          <button class="btn-secondary" id="btn-switch-camera">🔄 カメラ切り替え</button>
+        </div>
+
+        <div id="camera-error-msg" style="display: none; color: var(--accent); font-size: 12px; margin-bottom: 12px; background: rgba(254, 228, 64, 0.1); padding: 8px; border-radius: 6px;">
+          ⚠️ カメラが起動できない場合は、下の入力欄にルームIDを入れて参加できます
+        </div>
+
+        <!-- Manual Room ID fallback -->
+        <div style="border-top: 1px solid var(--border-glass); padding-top: 16px; margin-top: 8px;">
+          <p style="font-size: 12px; color: var(--text-sub); margin-bottom: 8px;">またはルームIDを直接入力</p>
+          <div style="display: flex; gap: 8px; max-width: 320px; margin: 0 auto;">
+            <input type="text" id="input-join-room-id" placeholder="例: janken-ABCDEF" style="flex:1; background: rgba(0,0,0,0.3); border:1px solid var(--border-glass); border-radius: 8px; color:#fff; padding: 8px 12px; font-size:14px;">
+            <button class="btn-primary" id="btn-manual-join">参加する</button>
+          </div>
+        </div>
+
+        <div id="guest-connect-status" style="font-size: 13px; color: var(--primary); margin-top: 12px; min-height: 20px;"></div>
+        <div id="guest-error" style="color: var(--secondary); font-size: 12px; margin-top: 6px;"></div>
+
+        <div class="screen-footer">
+          <button class="btn-secondary btn-back-menu">← メニューへもどる</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 4: Realtime P2P Battle Screen -->
+    <section id="screen-battle" class="screen">
+      <div class="card-box battle-arena">
+        
+        <!-- Opponent Status -->
+        <div class="opponent-area">
+          <div class="opponent-box">
+            <div class="hand-display" id="op-revealed-hand">❓</div>
+            <div style="text-align: left; flex: 1;">
+              <div style="font-size: 13px; color: var(--text-sub);">あいてのプレイヤー</div>
+              <div id="opponent-choice-status" style="font-size: 14px; font-weight: bold; color: var(--accent); margin-top: 2px;">
+                手を選んでいます...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Callout Banner ("ジャン！ケン！") -->
+        <div class="call-badge" id="call-text">最初はグー！じゃんけん…</div>
+
+        <!-- Result announcement box -->
+        <div class="result-box" id="result-box">
+          <div class="result-title" id="result-title">勝ち！</div>
+          <div class="result-subtitle" id="result-subtitle">すごい！</div>
+          <button class="btn-primary" id="btn-rematch" style="margin-top: 14px; display: none;">もう一回あそぶ！ 🔥</button>
+        </div>
+
+        <!-- Hand Selection Cards -->
+        <div class="hands-container" id="hands-selection">
+          <button class="hand-card" data-hand="rock">
+            <span class="hand-card-icon">✊</span>
+            <span class="hand-card-name">グー</span>
+          </button>
+          <button class="hand-card" data-hand="scissors">
+            <span class="hand-card-icon">✌️</span>
+            <span class="hand-card-name">チョキ</span>
+          </button>
+          <button class="hand-card" data-hand="paper">
+            <span class="hand-card-icon">🖐️</span>
+            <span class="hand-card-name">パー</span>
+          </button>
+        </div>
+
+        <!-- My Selected Hand Display -->
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <span style="font-size: 13px; color: var(--text-sub);">あなたが出した手:</span>
+          <div class="hand-display" id="my-revealed-hand" style="width: 50px; height: 50px; font-size: 24px;">❓</div>
+        </div>
+
+        <!-- Reaction Stamps Bar -->
+        <div class="reactions-bar">
+          <span style="font-size: 12px; color: var(--text-sub); margin-right: 4px;">スタンプ:</span>
+          <button class="btn-reaction" data-emoji="👏" title="拍手">👏</button>
+          <button class="btn-reaction" data-emoji="🔥" title="気合">🔥</button>
+          <button class="btn-reaction" data-emoji="🎉" title="祝">🎉</button>
+          <button class="btn-reaction" data-emoji="😭" title="泣">😭</button>
+          <button class="btn-reaction" data-emoji="😱" title="驚">😱</button>
+        </div>
+
+        <!-- Battle Stats -->
+        <div class="stats-panel">
+          <div class="stat-item">
+            <span class="stat-val" id="stat-wins" style="color: var(--primary);">0</span>
+            <span class="stat-label">勝ち</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val" id="stat-losses" style="color: var(--secondary);">0</span>
+            <span class="stat-label">負け</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val" id="stat-draws" style="color: var(--accent);">0</span>
+            <span class="stat-label">あいこ</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val" id="stat-streak" style="color: #ff9e00;">0</span>
+            <span class="stat-label">連勝</span>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div style="margin-top: 12px; text-align: center;">
+          <span style="font-size: 11px; color: var(--text-sub);">直近の勝敗: </span>
+          <span id="stat-history"></span>
+        </div>
+
+        <div class="screen-footer" style="margin-top: 16px;">
+          <button class="btn-secondary btn-back-menu">退室してメニューへ</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 5: Camera QR Duel (1 Device Mode) -->
+    <section id="screen-cam-duel" class="screen">
+      <div class="card-box" style="text-align: center;">
+        <h2 style="font-size: 20px; color: #fff; margin-bottom: 6px;">カメラにかざして対戦</h2>
+        <div id="duel-step-badge" class="room-id-badge" style="margin-bottom: 12px;">
+          プレイヤー1のターン
+        </div>
+        <p id="duel-instruction" style="font-size: 13px; color: var(--text-sub); margin-bottom: 14px;">
+          プレイヤー1の手札QRコードをカメラにかざしてください
+        </p>
+
+        <div class="camera-view-container">
+          <video id="duel-video" playsinline></video>
+          <canvas id="duel-canvas"></canvas>
+          <div class="scanner-overlay">
+            <div class="scanner-reticle">
+              <div class="scanner-laser"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Duel Progress Status -->
+        <div style="display: flex; justify-content: center; gap: 20px; margin: 12px 0;">
+          <div id="p1-duel-status" style="font-size: 14px; color: var(--text-sub);">
+            P1: <span>未スキャン ⏳</span>
+          </div>
+          <div id="p2-duel-status" style="font-size: 14px; color: var(--text-sub);">
+            P2: <span>未スキャン ⏳</span>
+          </div>
+        </div>
+
+        <!-- Duel Result Display Area -->
+        <div id="duel-result-box" class="result-box">
+          <div class="call-badge" id="duel-call-badge" style="margin-bottom: 8px;">ぽん！！！</div>
+          <div style="display: flex; justify-content: center; gap: 24px; margin: 12px 0;">
+            <div>
+              <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 4px;">プレイヤー1</div>
+              <div class="hand-display pop-anim" id="duel-p1-hand" style="font-size: 32px; width: 70px; height: 70px;">✊</div>
+            </div>
+            <div style="display: flex; align-items: center; font-size: 24px; font-weight: bold; color: var(--accent);">VS</div>
+            <div>
+              <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 4px;">プレイヤー2</div>
+              <div class="hand-display pop-anim" id="duel-p2-hand" style="font-size: 32px; width: 70px; height: 70px;">✌️</div>
+            </div>
+          </div>
+          <div class="result-title" id="duel-result-title">プレイヤー1の勝ち！🎉</div>
+          <button class="btn-primary" id="btn-duel-restart" style="margin-top: 14px;">もう一度対戦する！</button>
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 10px; margin-top: 14px;">
+          <button class="btn-secondary" id="btn-switch-camera-duel">🔄 カメラ切り替え</button>
+          <button class="btn-secondary" id="btn-duel-show-cards">🎴 手札QRを表示</button>
+        </div>
+
+        <div class="screen-footer">
+          <button class="btn-secondary btn-back-menu">← メニューへもどる</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 6: QR Cards Display (For printing or presenting) -->
+    <section id="screen-cards" class="screen">
+      <div class="card-box">
+        <h2 style="font-size: 20px; color: #fff; margin-bottom: 6px; text-align: center;">じゃんけんQRコード</h2>
+        <p style="font-size: 13px; color: var(--text-sub); text-align: center; margin-bottom: 20px;">
+          画面で見せ合ったり、カメラにかざして遊べます！
+        </p>
+
+        <div class="cards-grid">
+          <div class="card-item">
+            <span style="font-size: 36px;">✊</span>
+            <h3 style="color: #fff; font-size: 18px; margin: 4px 0;">グー</h3>
+            <div class="card-qr-box" id="qr-card-rock"></div>
+            <span style="font-size: 12px; color: var(--text-sub);">チョキに勝つ</span>
+          </div>
+
+          <div class="card-item">
+            <span style="font-size: 36px;">✌️</span>
+            <h3 style="color: #fff; font-size: 18px; margin: 4px 0;">チョキ</h3>
+            <div class="card-qr-box" id="qr-card-scissors"></div>
+            <span style="font-size: 12px; color: var(--text-sub);">パーに勝つ</span>
+          </div>
+
+          <div class="card-item">
+            <span style="font-size: 36px;">🖐️</span>
+            <h3 style="color: #fff; font-size: 18px; margin: 4px 0;">パー</h3>
+            <div class="card-qr-box" id="qr-card-paper"></div>
+            <span style="font-size: 12px; color: var(--text-sub);">グーに勝つ</span>
+          </div>
+        </div>
+
+        <div class="screen-footer">
+          <button class="btn-secondary btn-back-menu">← メニューへもどる</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN 7: Secret Offline QR Mode -->
+    <section id="screen-secret" class="screen">
+      <div class="card-box" style="text-align: center;">
+        <h2 style="font-size: 20px; color: #fff; margin-bottom: 6px;">オフライン秘密QR対決</h2>
+        
+        <!-- Step 1: P1 Choose Hand -->
+        <div id="secret-step-1">
+          <p style="font-size: 13px; color: var(--text-sub); margin-bottom: 16px;">
+            【プレイヤー1】相手に見られないように自分の手を選んでください
+          </p>
+          <div class="hands-container">
+            <button class="hand-card" data-secret-p1="rock">
+              <span class="hand-card-icon">✊</span>
+              <span class="hand-card-name">グー</span>
+            </button>
+            <button class="hand-card" data-secret-p1="scissors">
+              <span class="hand-card-icon">✌️</span>
+              <span class="hand-card-name">チョキ</span>
+            </button>
+            <button class="hand-card" data-secret-p1="paper">
+              <span class="hand-card-icon">🖐️</span>
+              <span class="hand-card-name">パー</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 2: Show Encrypted QR -->
+        <div id="secret-step-2" style="display: none;">
+          <p style="font-size: 13px; color: var(--text-sub); margin-bottom: 12px;">
+            【プレイヤー1】このQRコードをプレイヤー2に見せてください
+          </p>
+          <div class="qr-frame" id="secret-qr-box" style="margin: 0 auto 16px;"></div>
+          <button class="btn-primary" id="btn-secret-scan">プレイヤー2のカメラでスキャンへ進む →</button>
+        </div>
+
+        <!-- Step 3: P2 Scan & Choose -->
+        <div id="secret-step-3" style="display: none;">
+          <p style="font-size: 13px; color: var(--text-sub); margin-bottom: 12px;">
+            【プレイヤー2】相手のQRコードをカメラで読み取ってください
+          </p>
+          <div class="camera-view-container">
+            <video id="secret-video" playsinline></video>
+            <canvas id="secret-canvas"></canvas>
+            <div class="scanner-overlay">
+              <div class="scanner-reticle">
+                <div class="scanner-laser"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Result -->
+        <div id="secret-result-area" style="display: none; margin-top: 16px;">
+          <p style="font-size: 13px; color: var(--accent); margin-bottom: 10px;">
+            読み取り成功！【プレイヤー2】自分の手を選んでください！
+          </p>
+          <div class="hands-container" id="secret-p2-choose"></div>
+          <div id="secret-final-result" style="margin-top: 16px;"></div>
+        </div>
+
+        <div class="screen-footer" style="margin-top: 20px;">
+          <button class="btn-secondary btn-back-menu">← メニューへもどる</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Application Scripts -->
+  <script src="js/qrcode.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/confetti.js"></script>
+  <script src="js/p2p.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
